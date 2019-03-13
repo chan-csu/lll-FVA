@@ -140,9 +140,9 @@ else
     hasObjective = false;
 end
 
-if printLevel == 1
-    showprogress(0,'Flux variability analysis in progress ...');
-end
+% if printLevel == 1
+%     showprogress(0,'Flux variability analysis in progress ...');
+% end
 if printLevel > 1
     fprintf('%4s\t%4s\t%10s\t%9s\t%9s\n','No','Perc','Name','Min','Max');
 end
@@ -357,7 +357,9 @@ end
 if ~PCT_status || (~exist('parpool') || poolsize == 0)  %aka nothing is active
     
      
-    
+    if printLevel == 1
+        showprogress(0,'Flux variability analysis in progress ...');
+    end
     if minNorm
         for i = 1:length(rxnNameList)
             
@@ -408,74 +410,74 @@ if ~PCT_status || (~exist('parpool') || poolsize == 0)  %aka nothing is active
                 end
             end
 
-            if printLevel == 1 && ~parallelMode
+            if printLevel == 1
                 showprogress(i/length(rxnNameList));
             end
-            if printLevel > 1 && ~parallelMode
+            if printLevel > 1
                 fprintf('%4d\t%4.0f\t%10s\t%9.3f\t%9.3f\n',i,100*i/length(rxnNameList),rxnNameList{i},minFlux(i),maxFlux(i));
             end
         end
-    else
-        %Calc minimums
-        mins = -inf*ones(length(rxnListMin),1);
-        LPproblem.osense = 1;
-        for i = 1:length(rxnListMin)
-            if allowLoops >= -1
-                [mins(i)] = calcSolForEntry(model,rxnListMin,i,LPproblem,0, method, allowLoops,printLevel,minNorm,cpxControl,[], MILPproblem);
-            else
-                i0 = findRxnIDs(model, rxnListMin(i));
-                if ~alwaysLLC && ~loopInfo.rxnInLoops(i0, 1)
-                    % solve as LP is fine if no LLCs are always on and the
-                    % reverse direction of the current reaction is not in cycles
-                    mins(i) = calcSolForEntry(model,rxnNameList,i,LPproblem,0, ...
-                        method, 1, printLevel,minNorm,cpxControl,[], []);
+    else       
+        for i = 1:length(rxnNameList)
+            i0 = findRxnIDs(model, rxnNameList(i));
+            if ~minSolved(i)
+                %Calc minimums
+                LPproblem.osense = 1;
+                if allowLoops >= -1
+                    [minFlux(i)] = calcSolForEntry(model,rxnNameList,i,LPproblem,0, method, allowLoops,printLevel,minNorm,cpxControl,[], MILPproblem);
                 else
-                    % reset the bounds and rhs in the MILP
-                    MILPproblem = restoreOriginalBounds(MILPproblem, rhs0, loopInfo);
-                    rxnID = [];
-                    if loopInfo.rxnInLoops(i0, 1)  % if the reverse direction of rxn i0 is in cycles
-                        % apply LLCs to the objective reaction
-                        rxnID = i0;
+                    if ~alwaysLLC && ~loopInfo.rxnInLoops(i0, 1)
+                        % solve as LP is fine if no LLCs are always on and the
+                        % reverse direction of the current reaction is not in cycles
+                        minFlux(i) = calcSolForEntry(model,rxnNameList,i,LPproblem,0, ...
+                            method, 1, printLevel,minNorm,cpxControl,[], []);
+                    else
+                        % reset the bounds and rhs in the MILP
+                        MILPproblem = restoreOriginalBounds(MILPproblem, rhs0, loopInfo);
+                        rxnID = [];
+                        if loopInfo.rxnInLoops(i0, 1)  % if the reverse direction of rxn i0 is in cycles
+                            % apply LLCs to the objective reaction
+                            rxnID = i0;
+                        end
+                        % update bounds and rhs
+                        MILPproblem = updateLLCs(MILPproblem, conCompAlwaysOn, rxnInLoopsAlwaysOn, loopInfo, rxnID, useRxnLink);
+                        minFlux(i) = calcSolForEntry(model,rxnNameList,i,LPproblem,0, ...
+                            method, allowLoops, printLevel,minNorm,cpxControl,[], MILPproblem);
                     end
-                    % update bounds and rhs
-                    MILPproblem = updateLLCs(MILPproblem, conCompAlwaysOn, rxnInLoopsAlwaysOn, loopInfo, rxnID, useRxnLink);
-                    mins(i) = calcSolForEntry(model,rxnNameList,i,LPproblem,0, ...
-                        method, allowLoops, printLevel,minNorm,cpxControl,[], MILPproblem);
                 end
             end
-        end
-        [minFluxPres,minFluxOrder] = ismember(rxnListMin,rxnNameList);
-        minFlux(minFluxOrder(minFluxPres)) = mins;   
-        %calc maximiums
-        maxs = inf*ones(length(rxnListMax),1);
-        LPproblem.osense = -1;
-        for i = 1:length(rxnListMax)
-            if allowLoops >= -1
-                [maxs(i)] = calcSolForEntry(model,rxnListMax,i,LPproblem,0, method, allowLoops,printLevel,minNorm,cpxControl,[], MILPproblem);
-            else
-                i0 = findRxnIDs(model, rxnListMax(i));
-                if ~alwaysLLC && ~loopInfo.rxnInLoops(i0, 2)
-                    % solve as LP is fine if no LLCs are always on and the
-                    % forward direction of the current reaction is not in cycles
-                    maxs(i) = calcSolForEntry(model,rxnNameList,i,LPproblem,0, ...
-                        method, 1, printLevel,minNorm,cpxControl,[], []);
+            if ~maxSolved(i)
+                LPproblem.osense = -1;
+                if allowLoops >= -1
+                    [maxFlux(i)] = calcSolForEntry(model,rxnNameList,i,LPproblem,0, method, allowLoops,printLevel,minNorm,cpxControl,[], MILPproblem);
                 else
-                    % reset the bounds and rhs in the MILP
-                    MILPproblem = restoreOriginalBounds(MILPproblem, rhs0, loopInfo);
-                    rxnID = [];
-                    if loopInfo.rxnInLoops(i0, 2)  % if the forward direction of rxn i0 is in cycles
-                        % apply LLCs to the objective reaction
-                        rxnID = i0;
+                    if ~alwaysLLC && ~loopInfo.rxnInLoops(i0, 2)
+                        % solve as LP is fine if no LLCs are always on and the
+                        % forward direction of the current reaction is not in cycles
+                        maxFlux(i) = calcSolForEntry(model,rxnNameList,i,LPproblem,0, ...
+                            method, 1, printLevel,minNorm,cpxControl,[], []);
+                    else
+                        % reset the bounds and rhs in the MILP
+                        MILPproblem = restoreOriginalBounds(MILPproblem, rhs0, loopInfo);
+                        rxnID = [];
+                        if loopInfo.rxnInLoops(i0, 2)  % if the forward direction of rxn i0 is in cycles
+                            % apply LLCs to the objective reaction
+                            rxnID = i0;
+                        end
+                        % update bounds and rhs
+                        MILPproblem = updateLLCs(MILPproblem, conCompAlwaysOn, rxnInLoopsAlwaysOn, loopInfo, rxnID, useRxnLink);
+                        maxFlux(i) = calcSolForEntry(model,rxnNameList,i,LPproblem,0, ...
+                            method, allowLoops, printLevel,minNorm,cpxControl,[], MILPproblem);
                     end
-                    % update bounds and rhs
-                    MILPproblem = updateLLCs(MILPproblem, conCompAlwaysOn, rxnInLoopsAlwaysOn, loopInfo, rxnID, useRxnLink);
-                    maxs(i) = calcSolForEntry(model,rxnNameList,i,LPproblem,0, ...
-                        method, allowLoops, printLevel,minNorm,cpxControl,[], MILPproblem);
                 end
             end
+            if printLevel == 1
+                showprogress(i/length(rxnNameList));
+            end
+            if printLevel > 1
+                fprintf('%4d\t%4.0f\t%10s\t%9.3f\t%9.3f\n',i,100*i/length(rxnNameList),rxnNameList{i},minFlux(i),maxFlux(i));
+            end
         end
-        [maxFluxPres,maxFluxOrder] = ismember(rxnListMax,rxnNameList);
-        maxFlux(maxFluxOrder(maxFluxPres)) = maxs; 
     end
 else % parallel job.  pretty much does the same thing.
 
@@ -618,11 +620,8 @@ function [Flux,V] = calcSolForEntry(model,rxnNameList,i,LPproblem,parallelMode, 
     %get Number of reactions
     nRxns = numel(model.rxns);
     %Set the correct objective
-    LPproblem.c = double(ismember(model.rxns,rxnNameList{i}));
+    LPproblem.c = double(strcmp(model.rxns,rxnNameList{i}));
     if isempty(sol)
-        if printLevel == 1 && ~parallelMode
-            fprintf('iteration %d.\n', i);
-        end
         % do LP always
         if allowLoops > 0
             LPsolution = solveCobraLP(LPproblem, cpxControl);
