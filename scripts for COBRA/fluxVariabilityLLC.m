@@ -140,9 +140,6 @@ else
     hasObjective = false;
 end
 
-% if printLevel == 1
-%     showprogress(0,'Flux variability analysis in progress ...');
-% end
 if printLevel > 1
     fprintf('%4s\t%4s\t%10s\t%9s\t%9s\n','No','Perc','Name','Min','Max');
 end
